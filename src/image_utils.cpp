@@ -28,7 +28,8 @@ void encryptPassword(const string& password) {
     }
     
     string salt = generateRandomString(16);
-    string key = deriveKey(PROGRAM_PASSWORD + salt, AES_KEY_SIZE);
+    // Use PBKDF2 with just salt, not mixing the program password for encryption
+    string key = pbkdf2(salt, salt, AES_KEY_SIZE, PBKDF2_ITERATIONS);
     
     vector<unsigned char> iv(AES_BLOCK_SIZE);
     RAND_bytes(iv.data(), AES_BLOCK_SIZE);
@@ -72,8 +73,8 @@ void encryptPassword(const string& password) {
         }
     }
     
-    string seedStr = PROGRAM_PASSWORD;
-    seed_seq seed(seedStr.begin(), seedStr.end());
+    // Derive seed from key and salt instead of generating randomly
+    unsigned seed = deriveSeedFromKey(key, salt);
     mt19937 g(seed);
     shuffle(indices.begin(), indices.end(), g);
     
@@ -196,8 +197,11 @@ string decryptPassword(const string& filename) {
         }
     }
     
-    string seedStr = PROGRAM_PASSWORD;
-    seed_seq seed(seedStr.begin(), seedStr.end());
+    // Use PBKDF2 with just salt, not mixing the program password for decryption
+    string key = pbkdf2(salt, salt, AES_KEY_SIZE, PBKDF2_ITERATIONS);
+    
+    // Derive the seed from key and salt instead of reading it from the image
+    unsigned seed = deriveSeedFromKey(key, salt);
     mt19937 g(seed);
     shuffle(indices.begin(), indices.end(), g);
     
@@ -233,8 +237,6 @@ string decryptPassword(const string& filename) {
         storedHmac2[i] = image[width * height * 4 - 40 - HMAC_SIZE - i];
         storedHmac3[i] = image[400 + i];
     }
-    
-    string key = deriveKey(PROGRAM_PASSWORD + salt, AES_KEY_SIZE);
     
     // Verify with each HMAC and consider verification successful if any match
     bool hmacVerified = 

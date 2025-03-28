@@ -31,13 +31,32 @@ string generateRandomString(size_t length) {
 }
 
 string deriveKey(const string& password, size_t keyLength) {
-    string key = sha256(password + PROGRAM_PASSWORD);
+    // Use PBKDF2 instead of simple SHA256
+    string salt = generateRandomString(16);
+    return pbkdf2(password, salt, keyLength, PBKDF2_ITERATIONS);
+}
+
+string pbkdf2(const string& password, const string& salt, size_t keyLength, int iterations) {
+    unsigned char* key = new unsigned char[keyLength];
     
-    while (key.length() < keyLength) {
-        key += sha256(key);
+    // Use PKCS5_PBKDF2_HMAC with SHA-256
+    if (PKCS5_PBKDF2_HMAC(
+            password.c_str(), password.length(),
+            reinterpret_cast<const unsigned char*>(salt.c_str()), salt.length(),
+            iterations,
+            EVP_sha256(),
+            keyLength, key) != 1) {
+        cerr << "Error generating key using PBKDF2" << endl;
+        delete[] key;
+        return "";
     }
     
-    return key.substr(0, keyLength);
+    // Convert to string for our API
+    string result(reinterpret_cast<char*>(key), keyLength);
+    
+    // Clean up
+    delete[] key;
+    return result;
 }
 
 string sha256(const string& data) {
@@ -71,6 +90,9 @@ vector<unsigned char> aesEncrypt(const string& plaintext, const string& key, vec
     EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, 
                       reinterpret_cast<const unsigned char*>(key.c_str()), 
                       iv.data());
+    
+    // Explicitly set padding mode (PKCS7 padding is the default)
+    EVP_CIPHER_CTX_set_padding(ctx, 1);
     
     EVP_EncryptUpdate(ctx, ciphertext.data(), &len, 
                      reinterpret_cast<const unsigned char*>(plaintext.c_str()), 
@@ -113,6 +135,9 @@ string aesDecrypt(const vector<unsigned char>& ciphertext, const string& key, co
         return "";
     }
     
+    // Explicitly set padding mode (PKCS7 padding is the default)
+    EVP_CIPHER_CTX_set_padding(ctx, 1);
+    
     if (EVP_DecryptUpdate(ctx, plaintext_buf.data(), &len, 
                        ciphertext.data(), ciphertext.size()) != 1) {
         cout << "Error: Failed during decryption update." << endl;
@@ -133,13 +158,9 @@ string aesDecrypt(const vector<unsigned char>& ciphertext, const string& key, co
     
     plaintext_len += len;
     
+    // Check if plaintext contains only valid characters
     bool isPrintable = true;
     for (int i = 0; i < plaintext_len; i++) {
-        if (plaintext_buf[i] == 0) {
-            plaintext_len = i;
-            break;
-        }
-        
         if (!isprint(plaintext_buf[i]) && !isspace(plaintext_buf[i])) {
             isPrintable = false;
             break;
@@ -150,6 +171,7 @@ string aesDecrypt(const vector<unsigned char>& ciphertext, const string& key, co
         cout << "Warning: Decrypted data contains non-printable characters, which may indicate corruption." << endl;
     }
     
+    // The padding is automatically removed by EVP_DecryptFinal_ex, so we don't need to handle null bytes
     return string(plaintext_buf.begin(), plaintext_buf.begin() + plaintext_len);
 }
 
@@ -176,9 +198,6 @@ vector<unsigned char> generateHMAC(const vector<unsigned char>& data, const stri
         EVP_MD_CTX_free(ctx);
         return hmac;
     }
-    
-    // We need to combine the key with the data for a keyed hash
-    // For a proper HMAC, we use this simple approach:
     vector<unsigned char> keyData(key.begin(), key.end());
     keyData.insert(keyData.end(), data.begin(), data.end());
     
@@ -214,4 +233,26 @@ bool verifyHMAC(const vector<unsigned char>& data, const vector<unsigned char>& 
     }
     
     return result == 0;
+}
+
+unsigned deriveSeedFromKey(const string& key, const string& salt) {
+    // Use SHA-256 to create a hash of key and salt
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
+    const EVP_MD* md = EVP_sha256();
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    
+    EVP_DigestInit_ex(context, md, nullptr);
+    EVP_DigestUpdate(context, key.c_str(), key.size());
+    EVP_DigestUpdate(context, salt.c_str(), salt.size());
+    EVP_DigestFinal_ex(context, hash, nullptr);
+    
+    EVP_MD_CTX_free(context);
+    
+    // Convert first 4 bytes of hash to an unsigned int for the seed
+    unsigned seed = 0;
+    for (int i = 0; i < 4; i++) {
+        seed |= (static_cast<unsigned>(hash[i]) << (i * 8));
+    }
+    
+    return seed;
 }

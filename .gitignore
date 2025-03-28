@@ -33,3 +33,5 @@
 
 # Build directory
 build/
+# VS Code directory
+.vscode/

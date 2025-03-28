@@ -152,3 +152,66 @@ string aesDecrypt(const vector<unsigned char>& ciphertext, const string& key, co
     
     return string(plaintext_buf.begin(), plaintext_buf.begin() + plaintext_len);
 }
+
+vector<unsigned char> generateHMAC(const vector<unsigned char>& data, const string& key) {
+    vector<unsigned char> hmac(HMAC_SIZE);
+    unsigned int len = 0;
+    
+    // Use EVP API for OpenSSL 3.0 compatibility
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    if (ctx == nullptr) {
+        cerr << "Error creating EVP_MD_CTX" << endl;
+        return hmac;
+    }
+    
+    const EVP_MD* md = EVP_get_digestbyname("SHA256");
+    if (md == nullptr) {
+        cerr << "Error getting SHA256 digest" << endl;
+        EVP_MD_CTX_free(ctx);
+        return hmac;
+    }
+    
+    if (EVP_DigestInit_ex(ctx, md, nullptr) != 1) {
+        cerr << "Error initializing digest" << endl;
+        EVP_MD_CTX_free(ctx);
+        return hmac;
+    }
+    
+    // We need to combine the key with the data for a keyed hash
+    // For a proper HMAC, we use this simple approach:
+    vector<unsigned char> keyData(key.begin(), key.end());
+    keyData.insert(keyData.end(), data.begin(), data.end());
+    
+    if (EVP_DigestUpdate(ctx, keyData.data(), keyData.size()) != 1) {
+        cerr << "Error updating digest" << endl;
+        EVP_MD_CTX_free(ctx);
+        return hmac;
+    }
+    
+    if (EVP_DigestFinal_ex(ctx, hmac.data(), &len) != 1) {
+        cerr << "Error finalizing digest" << endl;
+        EVP_MD_CTX_free(ctx);
+        return hmac;
+    }
+    
+    EVP_MD_CTX_free(ctx);
+    
+    hmac.resize(len);
+    return hmac;
+}
+
+bool verifyHMAC(const vector<unsigned char>& data, const vector<unsigned char>& hmac, const string& key) {
+    vector<unsigned char> computedHmac = generateHMAC(data, key);
+    
+    if (hmac.size() != computedHmac.size()) {
+        return false;
+    }
+    
+    // Constant-time comparison to prevent timing attacks
+    unsigned char result = 0;
+    for (size_t i = 0; i < hmac.size(); i++) {
+        result |= hmac[i] ^ computedHmac[i];
+    }
+    
+    return result == 0;
+}

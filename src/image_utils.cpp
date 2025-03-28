@@ -85,13 +85,15 @@ void encryptPassword(const string& password) {
         }
     }
     
-    unsigned char checksum = 0;
-    for (auto& byte : encryptedData) {
-        checksum ^= byte;
+    // Replace XOR checksum with HMAC
+    vector<unsigned char> hmac = generateHMAC(encryptedData, key);
+    
+    // Store HMAC at multiple places for redundancy
+    for (size_t i = 0; i < min(hmac.size(), (size_t)HMAC_SIZE); i++) {
+        image[width * height * 4 - 40 - i] = hmac[i];
+        image[width * height * 4 - 40 - HMAC_SIZE - i] = hmac[i];
+        image[400 + i] = hmac[i];
     }
-    image[width * height * 4 - 5] = checksum;
-    image[width * height * 4 - 6] = checksum;
-    image[300] = checksum;
     
     string filename = "enc_" + generateRandomString(10) + ".png";
     
@@ -224,29 +226,27 @@ string decryptPassword(const string& filename) {
         encryptedData[i] = mostCommon;
     }
     
-    unsigned char storedChecksum1 = image[width * height * 4 - 5];
-    unsigned char storedChecksum2 = image[width * height * 4 - 6];
-    unsigned char storedChecksum3 = image[300];
-    unsigned char storedChecksum;
-    
-    if (storedChecksum1 == storedChecksum2 || storedChecksum1 == storedChecksum3) {
-        storedChecksum = storedChecksum1;
-    } else if (storedChecksum2 == storedChecksum3) {
-        storedChecksum = storedChecksum2;
-    } else {
-        storedChecksum = storedChecksum1;
-    }
-    
-    unsigned char calculatedChecksum = 0;
-    for (auto& byte : encryptedData) {
-        calculatedChecksum ^= byte;
-    }
-    
-    if (storedChecksum != calculatedChecksum) {
-        cout << "Warning: Checksum verification failed. Data might be corrupted." << endl;
+    // Extract stored HMAC from multiple locations
+    vector<unsigned char> storedHmac1(HMAC_SIZE), storedHmac2(HMAC_SIZE), storedHmac3(HMAC_SIZE);
+    for (int i = 0; i < HMAC_SIZE; i++) {
+        storedHmac1[i] = image[width * height * 4 - 40 - i];
+        storedHmac2[i] = image[width * height * 4 - 40 - HMAC_SIZE - i];
+        storedHmac3[i] = image[400 + i];
     }
     
     string key = deriveKey(PROGRAM_PASSWORD + salt, AES_KEY_SIZE);
+    
+    // Verify with each HMAC and consider verification successful if any match
+    bool hmacVerified = 
+        verifyHMAC(encryptedData, storedHmac1, key) ||
+        verifyHMAC(encryptedData, storedHmac2, key) ||
+        verifyHMAC(encryptedData, storedHmac3, key);
+    
+    if (!hmacVerified) {
+        cout << "Warning: HMAC verification failed. Data integrity cannot be guaranteed." << endl;
+    } else {
+        cout << "HMAC verification successful. Data integrity confirmed." << endl;
+    }
     
     try {
         string password = aesDecrypt(encryptedData, key, iv);

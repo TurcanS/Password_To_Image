@@ -7,10 +7,85 @@
 #include <iomanip>
 #include <sstream>
 #include <map>
+#include <cmath>
 
 using namespace std;
 
 const string PROGRAM_PASSWORD = "admin"; // Moving this constant here since it's used in the image functions
+
+// Helper function to generate a smooth gradient
+void generateGradient(vector<unsigned char>& image, unsigned width, unsigned height, 
+                     const vector<unsigned char>& color1, const vector<unsigned char>& color2) {
+    for (unsigned y = 0; y < height; y++) {
+        for (unsigned x = 0; x < width; x++) {
+            float factor = (float)x / width;
+            float factor2 = (float)y / height;
+            float blend = 0.5f * (factor + factor2);
+            
+            size_t idx = (y * width + x) * 4;
+            for (int c = 0; c < 3; c++) {
+                image[idx + c] = static_cast<unsigned char>(
+                    color1[c] * (1.0f - blend) + color2[c] * blend);
+            }
+            image[idx + 3] = 255; // Alpha channel
+        }
+    }
+}
+
+// Helper function to add some smooth noise to make it look natural
+void addNaturalNoise(vector<unsigned char>& image, unsigned width, unsigned height, float intensity) {
+    random_device rd;
+    mt19937 rng(rd());
+    normal_distribution<float> dist(0.0f, intensity);
+    
+    for (unsigned y = 0; y < height; y++) {
+        for (unsigned x = 0; x < width; x++) {
+            size_t idx = (y * width + x) * 4;
+            for (int c = 0; c < 3; c++) {
+                float noise = dist(rng);
+                int newValue = static_cast<int>(image[idx + c]) + noise;
+                image[idx + c] = static_cast<unsigned char>(max(0, min(255, newValue)));
+            }
+        }
+    }
+}
+
+// Helper function to add simple shapes for natural look
+void addShapes(vector<unsigned char>& image, unsigned width, unsigned height, int numShapes, mt19937& rng) {
+    uniform_int_distribution<int> xDist(0, width - 1);
+    uniform_int_distribution<int> yDist(0, height - 1);
+    uniform_int_distribution<int> radiusDist(30, 150);
+    uniform_int_distribution<int> colorDist(0, 255);
+    uniform_real_distribution<float> opacityDist(0.1f, 0.3f);
+    
+    for (int s = 0; s < numShapes; s++) {
+        int centerX = xDist(rng);
+        int centerY = yDist(rng);
+        int radius = radiusDist(rng);
+        vector<unsigned char> shapeColor = {
+            static_cast<unsigned char>(colorDist(rng)),
+            static_cast<unsigned char>(colorDist(rng)),
+            static_cast<unsigned char>(colorDist(rng))
+        };
+        float opacity = opacityDist(rng);
+        
+        for (int y = max(0, centerY - radius); y < min(static_cast<int>(height), centerY + radius); y++) {
+            for (int x = max(0, centerX - radius); x < min(static_cast<int>(width), centerX + radius); x++) {
+                float distance = sqrt(pow(x - centerX, 2) + pow(y - centerY, 2));
+                if (distance < radius) {
+                    float factor = 1.0f - (distance / radius);
+                    factor = pow(factor, 2) * opacity;
+                    
+                    size_t idx = (y * width + x) * 4;
+                    for (int c = 0; c < 3; c++) {
+                        image[idx + c] = static_cast<unsigned char>(
+                            image[idx + c] * (1.0f - factor) + shapeColor[c] * factor);
+                    }
+                }
+            }
+        }
+    }
+}
 
 void encryptPassword(const string& password) {
     unsigned width = 720;
@@ -19,16 +94,37 @@ void encryptPassword(const string& password) {
     vector<unsigned char> image;
     image.resize(width * height * 4);
     
+    // Create a random seed for the image generation
     random_device rd;
     mt19937 rng(rd());
-    uniform_int_distribution<unsigned char> dist(0, 255);
     
-    for (size_t i = 0; i < image.size(); i++) {
-        image[i] = dist(rng);
-    }
+    // Generate natural looking colors for the gradient
+    uniform_int_distribution<int> colorDist(0, 255);
+    vector<unsigned char> color1 = {
+        static_cast<unsigned char>(colorDist(rng)),
+        static_cast<unsigned char>(colorDist(rng)),
+        static_cast<unsigned char>(colorDist(rng))
+    };
     
+    vector<unsigned char> color2 = {
+        static_cast<unsigned char>(colorDist(rng)),
+        static_cast<unsigned char>(colorDist(rng)),
+        static_cast<unsigned char>(colorDist(rng))
+    };
+    
+    // Create gradient background
+    generateGradient(image, width, height, color1, color2);
+    
+    // Add some shapes to make it look more like a photograph
+    uniform_int_distribution<int> numShapesDist(10, 25);
+    int numShapes = numShapesDist(rng);
+    addShapes(image, width, height, numShapes, rng);
+    
+    // Add subtle noise to make it look more natural
+    addNaturalNoise(image, width, height, 10.0f);
+    
+    // Continue with encryption as before
     string salt = generateRandomString(16);
-    // Use PBKDF2 with just salt, not mixing the program password for encryption
     string key = pbkdf2(salt, salt, AES_KEY_SIZE, PBKDF2_ITERATIONS);
     
     vector<unsigned char> iv(AES_BLOCK_SIZE);
@@ -38,6 +134,7 @@ void encryptPassword(const string& password) {
     
     vector<unsigned char> encryptedData = aesEncrypt(password, key, iv);
     
+    // Store the encryption metadata in the image
     unsigned encLen = encryptedData.size();
     for (int i = 0; i < 4; i++) {
         image[i] = (encLen >> (i * 8)) & 0xFF;
@@ -61,6 +158,7 @@ void encryptPassword(const string& password) {
         image[width * height * 4 - 200 - i] = static_cast<unsigned char>(passwordHash[i]);
     }
     
+    // Create indices for embedding encrypted data
     vector<size_t> indices;
     indices.reserve(width * height / 2);
     
@@ -73,7 +171,6 @@ void encryptPassword(const string& password) {
         }
     }
     
-    // Derive seed from key and salt instead of generating randomly
     unsigned seed = deriveSeedFromKey(key, salt);
     mt19937 g(seed);
     shuffle(indices.begin(), indices.end(), g);
@@ -86,10 +183,8 @@ void encryptPassword(const string& password) {
         }
     }
     
-    // Replace XOR checksum with HMAC
     vector<unsigned char> hmac = generateHMAC(encryptedData, key);
     
-    // Store HMAC at multiple places for redundancy
     for (size_t i = 0; i < min(hmac.size(), (size_t)HMAC_SIZE); i++) {
         image[width * height * 4 - 40 - i] = hmac[i];
         image[width * height * 4 - 40 - HMAC_SIZE - i] = hmac[i];

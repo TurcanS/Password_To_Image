@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <sstream>
 #include <algorithm>
+#include <cstring>
 
 using namespace std;
 
@@ -179,41 +180,14 @@ vector<unsigned char> generateHMAC(const vector<unsigned char>& data, const stri
     vector<unsigned char> hmac(HMAC_SIZE);
     unsigned int len = 0;
     
-    // Use EVP API for OpenSSL 3.0 compatibility
-    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-    if (ctx == nullptr) {
-        cerr << "Error creating EVP_MD_CTX" << endl;
-        return hmac;
-    }
-    
-    const EVP_MD* md = EVP_get_digestbyname("SHA256");
-    if (md == nullptr) {
-        cerr << "Error getting SHA256 digest" << endl;
-        EVP_MD_CTX_free(ctx);
-        return hmac;
-    }
-    
-    if (EVP_DigestInit_ex(ctx, md, nullptr) != 1) {
-        cerr << "Error initializing digest" << endl;
-        EVP_MD_CTX_free(ctx);
-        return hmac;
-    }
-    vector<unsigned char> keyData(key.begin(), key.end());
-    keyData.insert(keyData.end(), data.begin(), data.end());
-    
-    if (EVP_DigestUpdate(ctx, keyData.data(), keyData.size()) != 1) {
-        cerr << "Error updating digest" << endl;
-        EVP_MD_CTX_free(ctx);
-        return hmac;
-    }
-    
-    if (EVP_DigestFinal_ex(ctx, hmac.data(), &len) != 1) {
-        cerr << "Error finalizing digest" << endl;
-        EVP_MD_CTX_free(ctx);
-        return hmac;
-    }
-    
-    EVP_MD_CTX_free(ctx);
+    // Use proper HMAC function instead of manual concatenation
+    HMAC(EVP_sha256(), 
+         key.c_str(), 
+         key.length(),
+         data.data(), 
+         data.size(),
+         hmac.data(), 
+         &len);
     
     hmac.resize(len);
     return hmac;
@@ -226,33 +200,28 @@ bool verifyHMAC(const vector<unsigned char>& data, const vector<unsigned char>& 
         return false;
     }
     
-    // Constant-time comparison to prevent timing attacks
-    unsigned char result = 0;
-    for (size_t i = 0; i < hmac.size(); i++) {
-        result |= hmac[i] ^ computedHmac[i];
-    }
-    
-    return result == 0;
+    // Use OpenSSL's constant-time comparison
+    return CRYPTO_memcmp(hmac.data(), computedHmac.data(), hmac.size()) == 0;
 }
 
 unsigned deriveSeedFromKey(const string& key, const string& salt) {
     // Use SHA-256 to create a hash of key and salt
-    EVP_MD_CTX* context = EVP_MD_CTX_new();
-    const EVP_MD* md = EVP_sha256();
     unsigned char hash[SHA256_DIGEST_LENGTH];
     
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
+    const EVP_MD* md = EVP_sha256();
+    
     EVP_DigestInit_ex(context, md, nullptr);
-    EVP_DigestUpdate(context, key.c_str(), key.size());
-    EVP_DigestUpdate(context, salt.c_str(), salt.size());
+    EVP_DigestUpdate(context, key.data(), key.size());
+    EVP_DigestUpdate(context, salt.data(), salt.size());
     EVP_DigestFinal_ex(context, hash, nullptr);
     
     EVP_MD_CTX_free(context);
     
     // Convert first 4 bytes of hash to an unsigned int for the seed
-    unsigned seed = 0;
-    for (int i = 0; i < 4; i++) {
-        seed |= (static_cast<unsigned>(hash[i]) << (i * 8));
-    }
+    // Use memcpy to avoid potential alignment issues
+    unsigned seed;
+    memcpy(&seed, hash, sizeof(unsigned));
     
     return seed;
 }

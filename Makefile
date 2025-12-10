@@ -60,7 +60,7 @@ endif
 ifdef DEBUG
     CXXFLAGS += -g -O0 -DDEBUG
     OPTFLAGS =
-    LDFLAGS = 
+    LDFLAGS =
 else
     CXXFLAGS += $(OPTFLAGS) -DNDEBUG
 endif
@@ -79,14 +79,18 @@ $(TARGET): $(OBJECTS)
 # Compile source files
 $(OBJ_DIR)/%.o: %.cpp
 	@echo "Compiling $<..."
+ifeq ($(PLATFORM),Windows)
+	@$(MKDIR) "$(subst /,\,$(dir $@))" 2>nul || echo >nul
+else
 	@$(MKDIR) $(dir $@)
+endif
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # Clean build artifacts
 clean:
 ifeq ($(PLATFORM),Windows)
-	@if exist $(BUILD_DIR) $(RMDIR) $(BUILD_DIR)
-	@if exist $(TARGET) $(RM) $(TARGET)
+	@if exist "$(subst /,\,$(BUILD_DIR))" $(RMDIR) "$(subst /,\,$(BUILD_DIR))"
+	@if exist "$(TARGET)" $(RM) "$(TARGET)"
 else
 	@$(RMDIR) $(BUILD_DIR) 2>/dev/null || true
 	@$(RM) $(TARGET) 2>/dev/null || true

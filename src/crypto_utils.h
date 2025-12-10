@@ -7,6 +7,7 @@
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
 #include <openssl/kdf.h>
+#include <openssl/crypto.h>
 
 const int AES_KEY_SIZE = 32;
 const int AES_BLOCK_SIZE = 16;

@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <sstream>
 #include <algorithm>
+#include <cstring>
 
 using namespace std;
 
@@ -179,41 +180,19 @@ vector<unsigned char> generateHMAC(const vector<unsigned char>& data, const stri
     vector<unsigned char> hmac(HMAC_SIZE);
     unsigned int len = 0;
     
-    // Use EVP API for OpenSSL 3.0 compatibility
-    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-    if (ctx == nullptr) {
-        cerr << "Error creating EVP_MD_CTX" << endl;
-        return hmac;
-    }
+    // Use proper HMAC function instead of manual concatenation
+    unsigned char* result = HMAC(EVP_sha256(), 
+                                  key.c_str(), 
+                                  key.length(),
+                                  data.data(), 
+                                  data.size(),
+                                  hmac.data(), 
+                                  &len);
     
-    const EVP_MD* md = EVP_get_digestbyname("SHA256");
-    if (md == nullptr) {
-        cerr << "Error getting SHA256 digest" << endl;
-        EVP_MD_CTX_free(ctx);
-        return hmac;
+    if (result == nullptr) {
+        cerr << "Error: HMAC generation failed" << endl;
+        return vector<unsigned char>(HMAC_SIZE, 0);
     }
-    
-    if (EVP_DigestInit_ex(ctx, md, nullptr) != 1) {
-        cerr << "Error initializing digest" << endl;
-        EVP_MD_CTX_free(ctx);
-        return hmac;
-    }
-    vector<unsigned char> keyData(key.begin(), key.end());
-    keyData.insert(keyData.end(), data.begin(), data.end());
-    
-    if (EVP_DigestUpdate(ctx, keyData.data(), keyData.size()) != 1) {
-        cerr << "Error updating digest" << endl;
-        EVP_MD_CTX_free(ctx);
-        return hmac;
-    }
-    
-    if (EVP_DigestFinal_ex(ctx, hmac.data(), &len) != 1) {
-        cerr << "Error finalizing digest" << endl;
-        EVP_MD_CTX_free(ctx);
-        return hmac;
-    }
-    
-    EVP_MD_CTX_free(ctx);
     
     hmac.resize(len);
     return hmac;
@@ -226,29 +205,50 @@ bool verifyHMAC(const vector<unsigned char>& data, const vector<unsigned char>& 
         return false;
     }
     
-    // Constant-time comparison to prevent timing attacks
-    unsigned char result = 0;
-    for (size_t i = 0; i < hmac.size(); i++) {
-        result |= hmac[i] ^ computedHmac[i];
-    }
-    
-    return result == 0;
+    // Use OpenSSL's constant-time comparison
+    return CRYPTO_memcmp(hmac.data(), computedHmac.data(), hmac.size()) == 0;
 }
 
 unsigned deriveSeedFromKey(const string& key, const string& salt) {
     // Use SHA-256 to create a hash of key and salt
-    EVP_MD_CTX* context = EVP_MD_CTX_new();
-    const EVP_MD* md = EVP_sha256();
     unsigned char hash[SHA256_DIGEST_LENGTH];
     
-    EVP_DigestInit_ex(context, md, nullptr);
-    EVP_DigestUpdate(context, key.c_str(), key.size());
-    EVP_DigestUpdate(context, salt.c_str(), salt.size());
-    EVP_DigestFinal_ex(context, hash, nullptr);
+    EVP_MD_CTX* context = EVP_MD_CTX_new();
+    if (context == nullptr) {
+        cerr << "Error: Failed to create EVP_MD_CTX" << endl;
+        return 0;
+    }
+    
+    const EVP_MD* md = EVP_sha256();
+    
+    if (EVP_DigestInit_ex(context, md, nullptr) != 1) {
+        cerr << "Error: Failed to initialize digest" << endl;
+        EVP_MD_CTX_free(context);
+        return 0;
+    }
+    
+    if (EVP_DigestUpdate(context, key.data(), key.size()) != 1) {
+        cerr << "Error: Failed to update digest with key" << endl;
+        EVP_MD_CTX_free(context);
+        return 0;
+    }
+    
+    if (EVP_DigestUpdate(context, salt.data(), salt.size()) != 1) {
+        cerr << "Error: Failed to update digest with salt" << endl;
+        EVP_MD_CTX_free(context);
+        return 0;
+    }
+    
+    if (EVP_DigestFinal_ex(context, hash, nullptr) != 1) {
+        cerr << "Error: Failed to finalize digest" << endl;
+        EVP_MD_CTX_free(context);
+        return 0;
+    }
     
     EVP_MD_CTX_free(context);
     
-    // Convert first 4 bytes of hash to an unsigned int for the seed
+    // Convert first 4 bytes of hash to unsigned int
+    // Using bit shifting for endian-independent conversion
     unsigned seed = 0;
     for (int i = 0; i < 4; i++) {
         seed |= (static_cast<unsigned>(hash[i]) << (i * 8));

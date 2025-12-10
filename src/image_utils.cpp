@@ -16,17 +16,24 @@ const string PROGRAM_PASSWORD = "admin"; // Moving this constant here since it's
 // Helper function to generate a smooth gradient
 void generateGradient(vector<unsigned char>& image, unsigned width, unsigned height, 
                      const vector<unsigned char>& color1, const vector<unsigned char>& color2) {
+    // Pre-calculate width factor to avoid repeated division
+    const float widthInv = 1.0f / width;
+    const float heightInv = 1.0f / height;
+    
     for (unsigned y = 0; y < height; y++) {
+        const float factor2 = y * heightInv;
+        size_t rowOffset = y * width * 4;
+        
         for (unsigned x = 0; x < width; x++) {
-            float factor = (float)x / width;
-            float factor2 = (float)y / height;
-            float blend = 0.5f * (factor + factor2);
+            const float factor = x * widthInv;
+            const float blend = 0.5f * (factor + factor2);
+            const float oneMinusBlend = 1.0f - blend;
             
-            size_t idx = (y * width + x) * 4;
-            for (int c = 0; c < 3; c++) {
-                image[idx + c] = static_cast<unsigned char>(
-                    color1[c] * (1.0f - blend) + color2[c] * blend);
-            }
+            size_t idx = rowOffset + x * 4;
+            // Unroll loop for better performance
+            image[idx] = static_cast<unsigned char>(color1[0] * oneMinusBlend + color2[0] * blend);
+            image[idx + 1] = static_cast<unsigned char>(color1[1] * oneMinusBlend + color2[1] * blend);
+            image[idx + 2] = static_cast<unsigned char>(color1[2] * oneMinusBlend + color2[2] * blend);
             image[idx + 3] = 255; // Alpha channel
         }
     }
@@ -38,15 +45,21 @@ void addNaturalNoise(vector<unsigned char>& image, unsigned width, unsigned heig
     mt19937 rng(rd());
     normal_distribution<float> dist(0.0f, intensity);
     
-    for (unsigned y = 0; y < height; y++) {
-        for (unsigned x = 0; x < width; x++) {
-            size_t idx = (y * width + x) * 4;
-            for (int c = 0; c < 3; c++) {
-                float noise = dist(rng);
-                int newValue = static_cast<int>(image[idx + c]) + noise;
-                image[idx + c] = static_cast<unsigned char>(max(0, min(255, newValue)));
-            }
-        }
+    const size_t totalPixels = width * height;
+    for (size_t pixel = 0; pixel < totalPixels; pixel++) {
+        size_t idx = pixel * 4;
+        // Unroll loop and combine operations
+        float noise1 = dist(rng);
+        float noise2 = dist(rng);
+        float noise3 = dist(rng);
+        
+        int newValue1 = static_cast<int>(image[idx]) + static_cast<int>(noise1);
+        int newValue2 = static_cast<int>(image[idx + 1]) + static_cast<int>(noise2);
+        int newValue3 = static_cast<int>(image[idx + 2]) + static_cast<int>(noise3);
+        
+        image[idx] = static_cast<unsigned char>(max(0, min(255, newValue1)));
+        image[idx + 1] = static_cast<unsigned char>(max(0, min(255, newValue2)));
+        image[idx + 2] = static_cast<unsigned char>(max(0, min(255, newValue3)));
     }
 }
 
@@ -59,28 +72,45 @@ void addShapes(vector<unsigned char>& image, unsigned width, unsigned height, in
     uniform_real_distribution<float> opacityDist(0.1f, 0.3f);
     
     for (int s = 0; s < numShapes; s++) {
-        int centerX = xDist(rng);
-        int centerY = yDist(rng);
-        int radius = radiusDist(rng);
-        vector<unsigned char> shapeColor = {
+        const int centerX = xDist(rng);
+        const int centerY = yDist(rng);
+        const int radius = radiusDist(rng);
+        const unsigned char shapeColor[3] = {
             static_cast<unsigned char>(colorDist(rng)),
             static_cast<unsigned char>(colorDist(rng)),
             static_cast<unsigned char>(colorDist(rng))
         };
-        float opacity = opacityDist(rng);
+        const float opacity = opacityDist(rng);
         
-        for (int y = max(0, centerY - radius); y < min(static_cast<int>(height), centerY + radius); y++) {
-            for (int x = max(0, centerX - radius); x < min(static_cast<int>(width), centerX + radius); x++) {
-                float distance = sqrt(pow(x - centerX, 2) + pow(y - centerY, 2));
-                if (distance < radius) {
+        const int minY = max(0, centerY - radius);
+        const int maxY = min(static_cast<int>(height), centerY + radius);
+        const int minX = max(0, centerX - radius);
+        const int maxX = min(static_cast<int>(width), centerX + radius);
+        const float radiusSquared = static_cast<float>(radius * radius);
+        
+        for (int y = minY; y < maxY; y++) {
+            const int dy = y - centerY;
+            const int dySquared = dy * dy;
+            const size_t rowOffset = y * width * 4;
+            
+            for (int x = minX; x < maxX; x++) {
+                const int dx = x - centerX;
+                const float distanceSquared = static_cast<float>(dx * dx + dySquared);
+                
+                if (distanceSquared < radiusSquared) {
+                    const float distance = sqrt(distanceSquared);
                     float factor = 1.0f - (distance / radius);
-                    factor = pow(factor, 2) * opacity;
+                    factor = factor * factor * opacity; // Squared factor times opacity
+                    const float oneMinusFactor = 1.0f - factor;
                     
-                    size_t idx = (y * width + x) * 4;
-                    for (int c = 0; c < 3; c++) {
-                        image[idx + c] = static_cast<unsigned char>(
-                            image[idx + c] * (1.0f - factor) + shapeColor[c] * factor);
-                    }
+                    const size_t idx = rowOffset + x * 4;
+                    // Unroll loop for RGB channels
+                    image[idx] = static_cast<unsigned char>(
+                        image[idx] * oneMinusFactor + shapeColor[0] * factor);
+                    image[idx + 1] = static_cast<unsigned char>(
+                        image[idx + 1] * oneMinusFactor + shapeColor[1] * factor);
+                    image[idx + 2] = static_cast<unsigned char>(
+                        image[idx + 2] * oneMinusFactor + shapeColor[2] * factor);
                 }
             }
         }
@@ -88,11 +118,12 @@ void addShapes(vector<unsigned char>& image, unsigned width, unsigned height, in
 }
 
 void encryptPassword(const string& password) {
-    unsigned width = 720;
-    unsigned height = 720;
+    const unsigned width = 720;
+    const unsigned height = 720;
+    const unsigned totalPixels = width * height;
     
     vector<unsigned char> image;
-    image.resize(width * height * 4);
+    image.resize(totalPixels * 4);
     
     // Create a random seed for the image generation
     random_device rd;
@@ -135,60 +166,78 @@ void encryptPassword(const string& password) {
     vector<unsigned char> encryptedData = aesEncrypt(password, key, iv);
     
     // Store the encryption metadata in the image
-    unsigned encLen = encryptedData.size();
+    const unsigned encLen = encryptedData.size();
+    const unsigned char encLenBytes[4] = {
+        static_cast<unsigned char>((encLen) & 0xFF),
+        static_cast<unsigned char>((encLen >> 8) & 0xFF),
+        static_cast<unsigned char>((encLen >> 16) & 0xFF),
+        static_cast<unsigned char>((encLen >> 24) & 0xFF)
+    };
+    
+    // Store encryption length at three locations (combined loop)
     for (int i = 0; i < 4; i++) {
-        image[i] = (encLen >> (i * 8)) & 0xFF;
-        image[width*4 - 4 + i] = (encLen >> (i * 8)) & 0xFF;
-        image[width*8 + i] = (encLen >> (i * 8)) & 0xFF;
+        image[i] = encLenBytes[i];
+        image[width*4 - 4 + i] = encLenBytes[i];
+        image[width*8 + i] = encLenBytes[i];
     }
     
+    // Store salt at two locations (combined loop)
     for (size_t i = 0; i < salt.length(); i++) {
-        image[20 + i] = static_cast<unsigned char>(salt[i]);
-        image[width * 4 - 20 - i] = static_cast<unsigned char>(salt[i]);
+        const unsigned char saltChar = static_cast<unsigned char>(salt[i]);
+        image[20 + i] = saltChar;
+        image[width * 4 - 20 - i] = saltChar;
     }
     
+    // Store IV at three locations (combined loop)
     for (int i = 0; i < AES_BLOCK_SIZE; i++) {
-        image[100 + i] = iv[i];
-        image[width * 4 - 100 - i] = iv[i];
-        image[(height/2 * width + width/2) * 4 + i] = iv[i];
+        const unsigned char ivByte = iv[i];
+        image[100 + i] = ivByte;
+        image[width * 4 - 100 - i] = ivByte;
+        image[(height/2 * width + width/2) * 4 + i] = ivByte;
     }
     
-    for (int i = 0; i < 32 && i < passwordHash.length(); i++) {
-        image[200 + i] = static_cast<unsigned char>(passwordHash[i]);
-        image[width * height * 4 - 200 - i] = static_cast<unsigned char>(passwordHash[i]);
+    // Store password hash at two locations (combined loop)
+    const size_t hashLen = min(static_cast<size_t>(32), passwordHash.length());
+    for (size_t i = 0; i < hashLen; i++) {
+        const unsigned char hashChar = static_cast<unsigned char>(passwordHash[i]);
+        image[200 + i] = hashChar;
+        image[totalPixels * 4 - 200 - i] = hashChar;
     }
     
     // Create indices for embedding encrypted data
     vector<size_t> indices;
-    indices.reserve(width * height / 2);
+    indices.reserve(totalPixels / 2);
     
-    for (size_t y = 0; y < height; y++) {
-        for (size_t x = 0; x < width; x++) {
-            size_t idx = (y * width + x) * 4;
-            if (idx > 300 && idx < width * height * 4 - 300) {
-                indices.push_back(idx);
-            }
-        }
+    const size_t imageSize = totalPixels * 4;
+    for (size_t idx = DATA_EMBEDDING_START; idx < imageSize - METADATA_BOUNDARY; idx += 4) {
+        indices.push_back(idx);
     }
     
     unsigned seed = deriveSeedFromKey(key, salt);
     mt19937 g(seed);
     shuffle(indices.begin(), indices.end(), g);
     
-    for (size_t i = 0; i < encryptedData.size() && i < indices.size(); i++) {
-        image[indices[i]] = encryptedData[i];
+    // Embed encrypted data with redundancy (combined loop)
+    const size_t indicesThird = indices.size() / 3;
+    const size_t encDataSize = encryptedData.size();
+    for (size_t i = 0; i < encDataSize && i < indices.size(); i++) {
+        const unsigned char dataByte = encryptedData[i];
+        image[indices[i]] = dataByte;
         
-        if (i + indices.size()/3 < indices.size()) {
-            image[indices[i + indices.size()/3]] = encryptedData[i];
+        if (i + indicesThird < indices.size()) {
+            image[indices[i + indicesThird]] = dataByte;
         }
     }
     
     vector<unsigned char> hmac = generateHMAC(encryptedData, key);
     
-    for (size_t i = 0; i < min(hmac.size(), (size_t)HMAC_SIZE); i++) {
-        image[width * height * 4 - 40 - i] = hmac[i];
-        image[width * height * 4 - 40 - HMAC_SIZE - i] = hmac[i];
-        image[400 + i] = hmac[i];
+    // Store HMAC at three locations (combined loop)
+    const size_t hmacSize = min(hmac.size(), static_cast<size_t>(HMAC_SIZE));
+    for (size_t i = 0; i < hmacSize; i++) {
+        const unsigned char hmacByte = hmac[i];
+        image[imageSize - 40 - i] = hmacByte;
+        image[imageSize - 40 - HMAC_SIZE - i] = hmacByte;
+        image[400 + i] = hmacByte;
     }
     
     string filename = "enc_" + generateRandomString(10) + ".png";
@@ -211,11 +260,16 @@ string decryptPassword(const string& filename) {
         return "";
     }
     
+    const unsigned totalPixels = width * height;
+    const size_t imageSize = totalPixels * 4;
+    
+    // Extract encryption length from three locations (combined loop)
     unsigned encLen1 = 0, encLen2 = 0, encLen3 = 0;
     for (int i = 0; i < 4; i++) {
-        encLen1 |= (static_cast<unsigned>(image[i]) << (i * 8));
-        encLen2 |= (static_cast<unsigned>(image[width*4 - 4 + i]) << (i * 8));
-        encLen3 |= (static_cast<unsigned>(image[width*8 + i]) << (i * 8));
+        const unsigned shift = i * 8;
+        encLen1 |= (static_cast<unsigned>(image[i]) << shift);
+        encLen2 |= (static_cast<unsigned>(image[width*4 - 4 + i]) << shift);
+        encLen3 |= (static_cast<unsigned>(image[width*8 + i]) << shift);
     }
     
     unsigned encLen;
@@ -238,6 +292,7 @@ string decryptPassword(const string& filename) {
         cout << "Warning: Size data was corrupted but recovered using redundancy." << endl;
     }
     
+    // Extract salt from two locations with error recovery (combined loop)
     string salt;
     salt.reserve(16);
     bool saltCorrupted = false;
@@ -258,6 +313,7 @@ string decryptPassword(const string& filename) {
         cout << "Warning: Salt was corrupted but attempted recovery." << endl;
     }
     
+    // Extract IV from three locations with error recovery (combined loop)
     vector<unsigned char> iv(AES_BLOCK_SIZE);
     bool ivCorrupted = false;
     
@@ -280,16 +336,12 @@ string decryptPassword(const string& filename) {
         cout << "Warning: IV was corrupted but repaired using redundant data." << endl;
     }
     
+    // Create indices for extracting encrypted data (optimized)
     vector<size_t> indices;
-    indices.reserve(width * height / 2);
+    indices.reserve(totalPixels / 2);
     
-    for (size_t y = 0; y < height; y++) {
-        for (size_t x = 0; x < width; x++) {
-            size_t idx = (y * width + x) * 4;
-            if (idx > 300 && idx < width * height * 4 - 300) {
-                indices.push_back(idx);
-            }
-        }
+    for (size_t idx = DATA_EMBEDDING_START; idx < imageSize - METADATA_BOUNDARY; idx += 4) {
+        indices.push_back(idx);
     }
     
     // Use PBKDF2 with just salt, not mixing the program password for decryption
@@ -300,13 +352,15 @@ string decryptPassword(const string& filename) {
     mt19937 g(seed);
     shuffle(indices.begin(), indices.end(), g);
     
+    // Extract encrypted data with frequency analysis (optimized)
     vector<map<unsigned char, int>> byteFrequencies(encLen);
+    const size_t indicesThird = indices.size() / 3;
     
     for (size_t i = 0; i < encLen && i < indices.size(); i++) {
         byteFrequencies[i][image[indices[i]]]++;
         
-        if (i + indices.size()/3 < indices.size() && i < encLen) {
-            byteFrequencies[i][image[indices[i + indices.size()/3]]]++;
+        if (i + indicesThird < indices.size() && i < encLen) {
+            byteFrequencies[i][image[indices[i + indicesThird]]]++;
         }
     }
     
@@ -325,11 +379,11 @@ string decryptPassword(const string& filename) {
         encryptedData[i] = mostCommon;
     }
     
-    // Extract stored HMAC from multiple locations
+    // Extract stored HMAC from multiple locations (combined into arrays)
     vector<unsigned char> storedHmac1(HMAC_SIZE), storedHmac2(HMAC_SIZE), storedHmac3(HMAC_SIZE);
     for (int i = 0; i < HMAC_SIZE; i++) {
-        storedHmac1[i] = image[width * height * 4 - 40 - i];
-        storedHmac2[i] = image[width * height * 4 - 40 - HMAC_SIZE - i];
+        storedHmac1[i] = image[imageSize - 40 - i];
+        storedHmac2[i] = image[imageSize - 40 - HMAC_SIZE - i];
         storedHmac3[i] = image[400 + i];
     }
     
@@ -353,11 +407,13 @@ string decryptPassword(const string& filename) {
             int validHashes = 0;
             int totalChecks = 0;
             
-            for (int i = 0; i < 32 && i < passwordHash.length(); i++) {
+            // Verify password hash (combined loop)
+            const size_t hashLen = min(static_cast<size_t>(32), passwordHash.length());
+            for (size_t i = 0; i < hashLen; i++) {
                 totalChecks += 2;
                 
                 unsigned char hash1 = image[200 + i];
-                unsigned char hash2 = image[width * height * 4 - 200 - i];
+                unsigned char hash2 = image[imageSize - 200 - i];
                 
                 unsigned char expectedHash = static_cast<unsigned char>(passwordHash[i]);
                 

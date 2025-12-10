@@ -209,7 +209,7 @@ void encryptPassword(const string& password) {
     indices.reserve(totalPixels / 2);
     
     const size_t imageSize = totalPixels * 4;
-    for (size_t idx = 304; idx < imageSize - 300; idx += 4) {
+    for (size_t idx = DATA_EMBEDDING_START; idx < imageSize - METADATA_BOUNDARY; idx += 4) {
         indices.push_back(idx);
     }
     
@@ -340,7 +340,7 @@ string decryptPassword(const string& filename) {
     vector<size_t> indices;
     indices.reserve(totalPixels / 2);
     
-    for (size_t idx = 304; idx < imageSize - 300; idx += 4) {
+    for (size_t idx = DATA_EMBEDDING_START; idx < imageSize - METADATA_BOUNDARY; idx += 4) {
         indices.push_back(idx);
     }
     

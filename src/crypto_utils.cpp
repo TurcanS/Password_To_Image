@@ -181,13 +181,18 @@ vector<unsigned char> generateHMAC(const vector<unsigned char>& data, const stri
     unsigned int len = 0;
     
     // Use proper HMAC function instead of manual concatenation
-    HMAC(EVP_sha256(), 
-         key.c_str(), 
-         key.length(),
-         data.data(), 
-         data.size(),
-         hmac.data(), 
-         &len);
+    unsigned char* result = HMAC(EVP_sha256(), 
+                                  key.c_str(), 
+                                  key.length(),
+                                  data.data(), 
+                                  data.size(),
+                                  hmac.data(), 
+                                  &len);
+    
+    if (result == nullptr) {
+        cerr << "Error: HMAC generation failed" << endl;
+        return vector<unsigned char>(HMAC_SIZE, 0);
+    }
     
     hmac.resize(len);
     return hmac;
@@ -209,19 +214,45 @@ unsigned deriveSeedFromKey(const string& key, const string& salt) {
     unsigned char hash[SHA256_DIGEST_LENGTH];
     
     EVP_MD_CTX* context = EVP_MD_CTX_new();
+    if (context == nullptr) {
+        cerr << "Error: Failed to create EVP_MD_CTX" << endl;
+        return 0;
+    }
+    
     const EVP_MD* md = EVP_sha256();
     
-    EVP_DigestInit_ex(context, md, nullptr);
-    EVP_DigestUpdate(context, key.data(), key.size());
-    EVP_DigestUpdate(context, salt.data(), salt.size());
-    EVP_DigestFinal_ex(context, hash, nullptr);
+    if (EVP_DigestInit_ex(context, md, nullptr) != 1) {
+        cerr << "Error: Failed to initialize digest" << endl;
+        EVP_MD_CTX_free(context);
+        return 0;
+    }
+    
+    if (EVP_DigestUpdate(context, key.data(), key.size()) != 1) {
+        cerr << "Error: Failed to update digest with key" << endl;
+        EVP_MD_CTX_free(context);
+        return 0;
+    }
+    
+    if (EVP_DigestUpdate(context, salt.data(), salt.size()) != 1) {
+        cerr << "Error: Failed to update digest with salt" << endl;
+        EVP_MD_CTX_free(context);
+        return 0;
+    }
+    
+    if (EVP_DigestFinal_ex(context, hash, nullptr) != 1) {
+        cerr << "Error: Failed to finalize digest" << endl;
+        EVP_MD_CTX_free(context);
+        return 0;
+    }
     
     EVP_MD_CTX_free(context);
     
-    // Convert first 4 bytes of hash to an unsigned int for the seed
-    // Use memcpy to avoid potential alignment issues
-    unsigned seed;
-    memcpy(&seed, hash, sizeof(unsigned));
+    // Convert first 4 bytes of hash to unsigned int
+    // Using bit shifting for endian-independent conversion
+    unsigned seed = 0;
+    for (int i = 0; i < 4; i++) {
+        seed |= (static_cast<unsigned>(hash[i]) << (i * 8));
+    }
     
     return seed;
 }

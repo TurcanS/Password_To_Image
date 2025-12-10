@@ -1,0 +1,3 @@
+/home/runner/work/Password_To_Image/Password_To_Image/_codeql_build_dir/CMakeFiles/enc_dec.dir
+/home/runner/work/Password_To_Image/Password_To_Image/_codeql_build_dir/CMakeFiles/edit_cache.dir
+/home/runner/work/Password_To_Image/Password_To_Image/_codeql_build_dir/CMakeFiles/rebuild_cache.dir

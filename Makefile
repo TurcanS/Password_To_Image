@@ -47,6 +47,11 @@ CXXFLAGS = -std=c++17 -Wall -Wextra -pedantic
 OPTFLAGS = -O3 -march=native -mtune=native -flto
 LDFLAGS = -flto
 
+# Portable build (overrides native arch for reproducible release binaries)
+ifdef PORTABLE
+    OPTFLAGS = -O3 -march=x86-64-v2 -mtune=generic -flto
+endif
+
 # Platform-specific settings
 ifeq ($(PLATFORM),Windows)
     # Windows/MinGW specific settings

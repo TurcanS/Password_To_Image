@@ -33,6 +33,8 @@ To recover the password, you provide the same master passphrase — the correct 
 
 Pre-compiled binaries are available on the [Releases](https://github.com/TurcanS/PassPix/releases) page. To verify integrity, check that your downloaded file matches the SHA-256 hash below:
 
+> **Note:** These hashes are for the CI-built release binaries compiled with `-march=x86-64-v2`. Locally compiled binaries will have different hashes due to `-march=native` CPU-specific optimizations.
+
 <!-- RELEASE_TABLE -->
 
 | Version | Platform | Binary | SHA-256 Hash |

@@ -38,7 +38,7 @@ jobs:
             mingw-w64-ucrt-x86_64-libsodium
 
       - name: Build
-        run: make
+        run: make PORTABLE=1
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

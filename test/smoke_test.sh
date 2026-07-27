@@ -17,7 +17,7 @@ echo "$ENCRYPT_OUT" | grep -q "Password encrypted"
 echo "PASS: encryption"
 
 # Get generated filename
-ENC_FILE=$(ls enc_*.png 2>/dev/null | head -1)
+ENC_FILE=$(ls img_*.png 2>/dev/null | head -1)
 if [ -z "$ENC_FILE" ]; then
     echo "FAIL: no encrypted file generated"
     exit 1

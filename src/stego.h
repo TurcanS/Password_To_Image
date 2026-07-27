@@ -4,10 +4,10 @@
 #include <string>
 
 const size_t METADATA_BOUNDARY = 300;
-const size_t DATA_EMBEDDING_START = 304;
+const size_t DATA_EMBEDDING_START = 1500;
 const size_t SALT_OFFSET = 20;
-const size_t IV_OFFSET = 100;
-const size_t HASH_OFFSET = 200;
+const size_t IV_OFFSET = 500;
+const size_t HASH_OFFSET = 1000;
 
 const unsigned char MAGIC_BYTES[4] = {0x50, 0x61, 0x73, 0x73};
 const size_t MAGIC_POSITIONS = 512;

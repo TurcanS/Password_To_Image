@@ -60,7 +60,7 @@ int main() {
         } else if (choice == 2) {
             auto files = listEncFiles();
             if (files.empty()) {
-                std::cout << "No encrypted files found." << std::endl;
+                std::cout << "No PassPix files found." << std::endl;
                 continue;
             }
             

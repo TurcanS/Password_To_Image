@@ -63,11 +63,12 @@ void encryptPassword(const std::string& masterPassphrase, const std::string& pas
     payload.passwordHash = passwordHash;
 
     embedPayload(image, width, height, payload, key);
+    embedMagic(image, width, height);
 
     secureWipe(&key[0], key.size());
     unlockMem(&key[0], key.size());
 
-    std::string filename = "enc_" + generateRandomString(FILENAME_RANDOM_LENGTH) + ".png";
+    std::string filename = "img_" + generateRandomString(FILENAME_RANDOM_LENGTH) + ".png";
     unsigned error = lodepng::encode(filename, image, width, height);
     if (error) {
         std::cout << "Error encoding image: " << lodepng_error_text(error) << std::endl;
@@ -137,11 +138,24 @@ std::vector<std::string> listEncFiles() {
     for (const auto& entry : fs::directory_iterator(".", ec)) {
         if (ec) break;
         std::string filename = entry.path().filename().string();
-        if (filename.length() > 4 &&
-            filename.substr(0, 4) == "enc_" &&
-            filename.substr(filename.length() - 4) == ".png") {
+        if (filename.length() < 5 || filename.substr(filename.length() - 4) != ".png")
+            continue;
+
+        // Quick check: skip already-found enc_ files
+        bool alreadyListed = false;
+        for (const auto& f : files) {
+            if (f == filename) { alreadyListed = true; break; }
+        }
+        if (alreadyListed) continue;
+
+        // Try magic check
+        std::vector<unsigned char> img;
+        unsigned w, h;
+        if (lodepng::decode(img, w, h, filename) != 0) continue;
+        if (checkMagic(img, w, h)) {
             files.push_back(filename);
         }
     }
+
     return files;
 }

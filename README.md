@@ -39,8 +39,8 @@ Pre-compiled binaries are available on the [Releases](https://github.com/TurcanS
 
 | Version | Platform | Binary | SHA-256 Hash |
 |---|---|---|---|
-| v0.2.0 | Linux | `passpix` | `e85d6054d0cbfced40df534d6bb5c379baf7854e88707a8ac978c5c2316d3eba` |
-| v0.2.0 | Windows | `passpix.exe` | `ecb545cb0215024819002bf119b24a1e07003e15a37fc5e946756cc5b0ba7f9a` |
+| v0.2.0 | Linux | `passpix` | `102e5f3faea01ebebeb85a86683c21f6b3f127ffff881f32e9b8cdac862f3b0b` |
+| v0.2.0 | Windows | `passpix.exe` | `4877941bdbdeb5e72cccd47fa68d9f1d386a4e8c6a763dba3e0c1d5fbd17d5d9` |
 
 ---
 

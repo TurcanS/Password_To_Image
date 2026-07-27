@@ -94,6 +94,7 @@ jobs:
 
       - name: Update README with hashes
         run: |
+          git fetch origin main
           git checkout main
           TAG="${{ github.ref_name }}"
           LINUX_HASH="${{ env.LINUX_HASH }}"

@@ -36,13 +36,10 @@ Pre-compiled binaries are available on the [Releases](https://github.com/TurcanS
 > **Note:** These hashes are for the CI-built release binaries compiled with `-march=x86-64-v2`. Locally compiled binaries will have different hashes due to `-march=native` CPU-specific optimizations.
 
 <!-- RELEASE_TABLE -->
-| v0.3.0 | Linux | `passpix` | `f1745d715ef787408370cf19a0433ff835da2176fc2fc257ebc9b3ed8d337d33` |
-| v0.3.0 | Windows | `passpix.exe` | `47b2d2e5032eb52d531de628dc7b08aa9af3458bdc337eccbf5d7c194b068e0d` |
-
 | Version | Platform | Binary | SHA-256 Hash |
 |---|---|---|---|
-| v0.2.0 | Linux | `passpix` | `102e5f3faea01ebebeb85a86683c21f6b3f127ffff881f32e9b8cdac862f3b0b` |
-| v0.2.0 | Windows | `passpix.exe` | `4877941bdbdeb5e72cccd47fa68d9f1d386a4e8c6a763dba3e0c1d5fbd17d5d9` |
+| <!-- VERSION -->v0.3.0<!-- /VERSION --> | Linux | `passpix` | `<!-- HASH_LINUX -->f1745d715ef787408370cf19a0433ff835da2176fc2fc257ebc9b3ed8d337d33<!-- /HASH_LINUX -->` |
+| <!-- VERSION -->v0.3.0<!-- /VERSION --> | Windows | `passpix.exe` | `<!-- HASH_WIN -->47b2d2e5032eb52d531de628dc7b08aa9af3458bdc337eccbf5d7c194b068e0d<!-- /HASH_WIN -->` |
 
 ---
 

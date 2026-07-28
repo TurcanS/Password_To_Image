@@ -101,8 +101,8 @@ jobs:
           WIN_HASH="${{ env.WIN_HASH }}"
 
           sed -i "s|<!-- VERSION -->.*<!-- /VERSION -->|<!-- VERSION -->${TAG}<!-- /VERSION -->|g" README.md
-          sed -i "s|<!-- HASH_LINUX -->.*<!-- /HASH_LINUX -->|<!-- HASH_LINUX -->${LINUX_HASH}<!-- /HASH_LINUX -->|" README.md
-          sed -i "s|<!-- HASH_WIN -->.*<!-- /HASH_WIN -->|<!-- HASH_WIN -->${WIN_HASH}<!-- /HASH_WIN -->|" README.md
+          sed -i "s|<!-- HASH_LINUX -->\`.*\`<!-- /HASH_LINUX -->|<!-- HASH_LINUX -->\`${LINUX_HASH}\`<!-- /HASH_LINUX -->|" README.md
+          sed -i "s|<!-- HASH_WIN -->\`.*\`<!-- /HASH_WIN -->|<!-- HASH_WIN -->\`${WIN_HASH}\`<!-- /HASH_WIN -->|" README.md
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

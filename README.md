@@ -36,6 +36,8 @@ Pre-compiled binaries are available on the [Releases](https://github.com/TurcanS
 > **Note:** These hashes are for the CI-built release binaries compiled with `-march=x86-64-v2`. Locally compiled binaries will have different hashes due to `-march=native` CPU-specific optimizations.
 
 <!-- RELEASE_TABLE -->
+| v0.3.0 | Linux | `passpix` | `f1745d715ef787408370cf19a0433ff835da2176fc2fc257ebc9b3ed8d337d33` |
+| v0.3.0 | Windows | `passpix.exe` | `47b2d2e5032eb52d531de628dc7b08aa9af3458bdc337eccbf5d7c194b068e0d` |
 
 | Version | Platform | Binary | SHA-256 Hash |
 |---|---|---|---|

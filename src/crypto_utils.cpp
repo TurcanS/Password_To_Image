@@ -47,11 +47,30 @@ std::string sha256(const std::string& data) {
     unsigned char hash[crypto_hash_sha256_BYTES];
 
     EVP_MD_CTX* context = EVP_MD_CTX_new();
+    if (context == nullptr) {
+        std::cerr << "Error: Failed to create EVP_MD_CTX" << std::endl;
+        return "";
+    }
+
     const EVP_MD* md = EVP_sha256();
 
-    EVP_DigestInit_ex(context, md, nullptr);
-    EVP_DigestUpdate(context, data.c_str(), data.size());
-    EVP_DigestFinal_ex(context, hash, nullptr);
+    if (EVP_DigestInit_ex(context, md, nullptr) != 1) {
+        std::cerr << "Error: Failed to initialize digest" << std::endl;
+        EVP_MD_CTX_free(context);
+        return "";
+    }
+
+    if (EVP_DigestUpdate(context, data.c_str(), data.size()) != 1) {
+        std::cerr << "Error: Failed to update digest" << std::endl;
+        EVP_MD_CTX_free(context);
+        return "";
+    }
+
+    if (EVP_DigestFinal_ex(context, hash, nullptr) != 1) {
+        std::cerr << "Error: Failed to finalize digest" << std::endl;
+        EVP_MD_CTX_free(context);
+        return "";
+    }
 
     EVP_MD_CTX_free(context);
 
@@ -69,13 +88,16 @@ std::vector<unsigned char> encrypt(const std::string& plaintext, const std::stri
     std::vector<unsigned char> ciphertext(plaintext.size() + crypto_aead_xchacha20poly1305_ietf_ABYTES);
     unsigned long long ciphertextLen;
 
-    crypto_aead_xchacha20poly1305_ietf_encrypt(
-        ciphertext.data(), &ciphertextLen,
-        reinterpret_cast<const unsigned char*>(plaintext.data()), plaintext.size(),
-        nullptr, 0,
-        nullptr,
-        nonce.data(),
-        reinterpret_cast<const unsigned char*>(key.data()));
+    if (crypto_aead_xchacha20poly1305_ietf_encrypt(
+            ciphertext.data(), &ciphertextLen,
+            reinterpret_cast<const unsigned char*>(plaintext.data()), plaintext.size(),
+            nullptr, 0,
+            nullptr,
+            nonce.data(),
+            reinterpret_cast<const unsigned char*>(key.data())) != 0) {
+        std::cerr << "Error: Encryption failed" << std::endl;
+        return {};
+    }
 
     std::vector<unsigned char> result;
     result.reserve(nonce.size() + ciphertextLen);

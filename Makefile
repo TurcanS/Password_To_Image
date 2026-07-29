@@ -43,9 +43,9 @@ OBJECTS = $(SOURCES:%.cpp=$(OBJ_DIR)/%.o)
 INCLUDES = -I. -IInclude -Isrc
 
 # Optimization and warning flags
-CXXFLAGS = -std=c++17 -Wall -Wextra -pedantic
+CXXFLAGS = -std=c++17 -Wall -Wextra -pedantic -D_FORTIFY_SOURCE=2 -fstack-protector-strong
 OPTFLAGS = -O3 -march=native -mtune=native -flto
-LDFLAGS = -flto
+LDFLAGS = -flto -Wl,-z,relro -Wl,-z,now
 
 # Portable build (overrides native arch for reproducible release binaries)
 ifdef PORTABLE

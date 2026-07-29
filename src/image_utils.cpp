@@ -87,6 +87,11 @@ std::string decryptPassword(const std::string& masterPassphrase, const std::stri
         return "";
     }
 
+    if (image.size() < DATA_EMBEDDING_START) {
+        std::cout << "Error: Image too small to contain encrypted data" << std::endl;
+        return "";
+    }
+
     std::string salt;
     salt.reserve(SALT_LENGTH);
     for (size_t i = 0; i < SALT_LENGTH; i++) {
@@ -99,7 +104,10 @@ std::string decryptPassword(const std::string& masterPassphrase, const std::stri
 
     EncryptedPayload payload = extractPayload(image, width, height, key);
 
+    secureWipe(&key[0], key.size());
+    unlockMem(&key[0], key.size());
     key = deriveKey(masterPassphrase, payload.salt, KEY_SIZE);
+    lockMem(&key[0], key.size());
 
     try {
         std::string password = decrypt(payload.encryptedData, key);

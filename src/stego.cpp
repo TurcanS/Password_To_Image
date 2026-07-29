@@ -7,6 +7,7 @@
 void embedMagic(std::vector<unsigned char>& image, unsigned width, unsigned height) {
     const unsigned totalPixels = width * height;
     const size_t imageSize = static_cast<size_t>(totalPixels) * 4;
+    if (imageSize < 4) return;
     const size_t stride = imageSize / MAGIC_POSITIONS;
 
     for (size_t p = 0; p < MAGIC_POSITIONS; p++) {
@@ -21,6 +22,7 @@ void embedMagic(std::vector<unsigned char>& image, unsigned width, unsigned heig
 bool checkMagic(const std::vector<unsigned char>& image, unsigned width, unsigned height) {
     const unsigned totalPixels = width * height;
     const size_t imageSize = static_cast<size_t>(totalPixels) * 4;
+    if (imageSize < 4) return false;
     const size_t stride = imageSize / MAGIC_POSITIONS;
 
     size_t matches = 0;
@@ -89,6 +91,7 @@ void embedPayload(std::vector<unsigned char>& image, unsigned width, unsigned he
 
     const size_t encDataSize = payload.encryptedData.size();
     for (size_t copy = 0; copy < static_cast<size_t>(REDUNDANCY_FACTOR) && copy * encDataSize < indices.size(); copy++) {
+        if (indices.size() <= encDataSize) break;
         size_t base = (copy * REDUNDANCY_STRIDE) % (indices.size() - encDataSize);
         for (size_t i = 0; i < encDataSize && (base + i) < indices.size(); i++) {
             size_t idx = indices[base + i];
@@ -176,6 +179,7 @@ EncryptedPayload extractPayload(const std::vector<unsigned char>& image, unsigne
 
     std::vector<std::map<unsigned char, int>> byteFrequencies(encLen);
     for (size_t copy = 0; copy < static_cast<size_t>(REDUNDANCY_FACTOR); copy++) {
+        if (indices.size() <= encLen) break;
         size_t base = (copy * REDUNDANCY_STRIDE) % (indices.size() - encLen);
         size_t channelOffset = copy % 3;
         for (size_t i = 0; i < encLen && (base + i) < indices.size(); i++) {

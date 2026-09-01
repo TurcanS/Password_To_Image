@@ -45,7 +45,7 @@ INCLUDES = -I. -IInclude -Isrc
 # Optimization and warning flags
 CXXFLAGS = -std=c++17 -Wall -Wextra -pedantic -D_FORTIFY_SOURCE=2 -fstack-protector-strong
 OPTFLAGS = -O3 -march=native -mtune=native -flto
-LDFLAGS = -flto -Wl,-z,relro -Wl,-z,now
+LDFLAGS = -flto
 
 # Portable build (overrides native arch for reproducible release binaries)
 ifdef PORTABLE
@@ -61,6 +61,7 @@ ifeq ($(PLATFORM),Windows)
 else
     # Linux specific settings
     LIBS = -lssl -lcrypto -lsodium -lpthread
+    LDFLAGS += -Wl,-z,relro -Wl,-z,now
 endif
 
 # Debug build support

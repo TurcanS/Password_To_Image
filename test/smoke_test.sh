@@ -5,14 +5,25 @@ BINARY="${1:-./passpix}"
 PASS="smoke-test-master"
 SECRET="smoke-secret-123"
 TESTDIR=$(mktemp -d)
-trap "rm -rf $TESTDIR" EXIT
+trap 'rm -rf -- "$TESTDIR"' EXIT
+
+if [[ "$BINARY" = /* ]]; then
+    SOURCE_BINARY="$BINARY"
+else
+    SOURCE_BINARY="$(pwd)/$BINARY"
+fi
 
 cd "$TESTDIR"
-cp "$OLDPWD/$BINARY" ./passpix 2>/dev/null || cp "$OLDPWD/$BINARY" ./passpix
-BIN=./passpix
+if [[ "$SOURCE_BINARY" = *.exe ]]; then
+    LOCAL_BINARY=./passpix.exe
+else
+    LOCAL_BINARY=./passpix
+fi
+cp "$SOURCE_BINARY" "$LOCAL_BINARY"
+BIN="$LOCAL_BINARY"
 
 # Test encrypt
-ENCRYPT_OUT=$(echo -e "1\n$PASS\n$PASS\n$SECRET\n3\n" | $BIN 2>&1)
+ENCRYPT_OUT=$(printf '1\n%s\n%s\n%s\n3\n' "$PASS" "$PASS" "$SECRET" | "$BIN" 2>&1)
 echo "$ENCRYPT_OUT" | grep -q "Password encrypted"
 echo "PASS: encryption"
 
@@ -25,7 +36,7 @@ fi
 echo "PASS: file generated: $ENC_FILE"
 
 # Test decrypt
-RESULT=$(echo -e "2\n1\n$PASS\n3\n" | $BIN 2>&1)
+RESULT=$(printf '2\n1\n%s\ny\n3\n' "$PASS" | "$BIN" 2>&1)
 echo "$RESULT" | grep -q "$SECRET"
 echo "PASS: decryption returned correct password"
 

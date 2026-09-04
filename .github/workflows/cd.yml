@@ -12,7 +12,7 @@ jobs:
         include:
           - os: ubuntu-latest
             target: linux
-            packages: build-essential libssl-dev libsodium-dev
+            packages: build-essential pkg-config libsodium-dev
           - os: windows-latest
             target: windows
     runs-on: ${{ matrix.os }}
@@ -34,17 +34,19 @@ jobs:
           install: >-
             base-devel
             mingw-w64-ucrt-x86_64-toolchain
-            mingw-w64-ucrt-x86_64-openssl
             mingw-w64-ucrt-x86_64-libsodium
 
       - name: Build
         run: make PORTABLE=1
 
+      - name: Test release artifact
+        run: make test
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: passpix-${{ matrix.target }}
-          path: passpix*
+          path: ${{ matrix.target == 'windows' && 'passpix.exe' || 'passpix' }}
 
   release:
     needs: build
@@ -86,26 +88,8 @@ jobs:
 
             | Platform | Binary | Hash |
             |---|---|---|
-            | Linux | `passpix` | `${{ env.LINUX_HASH }}` |
+            | Linux | `passpix-linux` | `${{ env.LINUX_HASH }}` |
             | Windows | `passpix.exe` | `${{ env.WIN_HASH }}` |
           files: |
             dist/passpix-linux
             dist/passpix.exe
-
-      - name: Update README with hashes
-        run: |
-          git fetch origin main
-          git checkout main
-          TAG="${{ github.ref_name }}"
-          LINUX_HASH="${{ env.LINUX_HASH }}"
-          WIN_HASH="${{ env.WIN_HASH }}"
-
-          sed -i "s|<!-- VERSION -->.*<!-- /VERSION -->|<!-- VERSION -->${TAG}<!-- /VERSION -->|g" README.md
-          sed -i "s|<!-- HASH_LINUX -->\`.*\`<!-- /HASH_LINUX -->|<!-- HASH_LINUX -->\`${LINUX_HASH}\`<!-- /HASH_LINUX -->|" README.md
-          sed -i "s|<!-- HASH_WIN -->\`.*\`<!-- /HASH_WIN -->|<!-- HASH_WIN -->\`${WIN_HASH}\`<!-- /HASH_WIN -->|" README.md
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          git diff --cached --quiet || git commit -m "docs: update binary hashes for ${TAG} [skip ci]"
-          git push origin main

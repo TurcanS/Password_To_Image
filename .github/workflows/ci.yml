@@ -12,11 +12,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential libssl-dev libsodium-dev
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake pkg-config libsodium-dev
       - name: Build
         run: make PORTABLE=1
       - name: Test
         run: make test
+
+      - name: CMake build and tests
+        run: cmake -S . -B cmake-build -DCMAKE_BUILD_TYPE=Release && cmake --build cmake-build --parallel 2 && ctest --test-dir cmake-build --output-on-failure
+
+      - name: Sanitizer build and tests
+        run: make clean && make SANITIZE=1 && make test SANITIZE=1
 
   windows:
     runs-on: windows-latest
@@ -32,7 +38,6 @@ jobs:
           install: >-
             base-devel
             mingw-w64-ucrt-x86_64-toolchain
-            mingw-w64-ucrt-x86_64-openssl
             mingw-w64-ucrt-x86_64-libsodium
       - name: Build
         run: make PORTABLE=1

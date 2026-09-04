@@ -1,30 +1,51 @@
 #pragma once
 
-#include <vector>
+#include "crypto_utils.h"
+
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 
-const size_t METADATA_BOUNDARY = 300;
-const size_t DATA_EMBEDDING_START = 1500;
-const size_t SALT_OFFSET = 20;
-const size_t IV_OFFSET = 500;
-const size_t HASH_OFFSET = 1000;
+inline constexpr std::size_t MAX_SECRET_SIZE = 64 * 1024;
+inline constexpr std::uint8_t FORMAT_VERSION = 2;
+inline constexpr std::size_t HEADER_SIZE = 66;
+inline constexpr std::size_t BIT_REDUNDANCY = 3;
 
-const unsigned char MAGIC_BYTES[4] = {0x50, 0x61, 0x73, 0x73};
-const size_t MAGIC_POSITIONS = 512;
-const int REDUNDANCY_FACTOR = 16;
-const size_t REDUNDANCY_STRIDE = 1024;
+enum class PassPixFormat { None, LegacyV1, V2 };
 
-struct EncryptedPayload {
-    std::vector<unsigned char> encryptedData;
-    std::string salt;
-    std::vector<unsigned char> iv;
-    std::string passwordHash;
+struct PayloadHeader {
+  KdfParams kdf{};
+  std::vector<unsigned char> salt;
+  std::vector<unsigned char> nonce;
+  std::uint32_t ciphertextLength = 0;
 };
 
-void embedMagic(std::vector<unsigned char>& image, unsigned width, unsigned height);
-bool checkMagic(const std::vector<unsigned char>& image, unsigned width, unsigned height);
+bool validateRgbaImage(const std::vector<unsigned char> &image, unsigned width,
+                       unsigned height, std::string &error);
+std::vector<unsigned char> serializeHeader(const PayloadHeader &header);
+bool parseHeader(const std::vector<unsigned char> &bytes, PayloadHeader &header,
+                 std::string &error);
 
-void embedPayload(std::vector<unsigned char>& image, unsigned width, unsigned height,
-                  const EncryptedPayload& payload, const std::string& key);
-EncryptedPayload extractPayload(const std::vector<unsigned char>& image, unsigned width,
-                                 unsigned height, const std::string& key);
+bool embedPayload(std::vector<unsigned char> &image, unsigned width,
+                  unsigned height, const PayloadHeader &header,
+                  const std::vector<unsigned char> &ciphertext,
+                  std::string &error);
+bool extractPayload(const std::vector<unsigned char> &image, unsigned width,
+                    unsigned height, PayloadHeader &header,
+                    std::vector<unsigned char> &ciphertext, std::string &error);
+
+PassPixFormat detectFormat(const std::vector<unsigned char> &image,
+                           unsigned width, unsigned height);
+bool checkMagic(const std::vector<unsigned char> &image, unsigned width,
+                unsigned height);
+
+bool extractLegacySalt(const std::vector<unsigned char> &image, unsigned width,
+                       unsigned height, std::vector<unsigned char> &salt,
+                       std::string &error);
+bool extractLegacyCiphertext(const std::vector<unsigned char> &image,
+                             unsigned width, unsigned height,
+                             const SecureBuffer &key,
+                             const std::vector<unsigned char> &salt,
+                             std::vector<unsigned char> &encryptedBlob,
+                             std::string &error);

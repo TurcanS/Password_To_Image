@@ -1,144 +1,85 @@
 #define CATCH_CONFIG_MAIN
 #include "catch_amalgamated.hpp"
 #include "crypto_utils.h"
+
 #include <cstring>
 #include <sodium.h>
 
-TEST_CASE("SHA-256 produces correct hash for known input", "[crypto]") {
-    SECTION("empty string") {
-        std::string result = sha256("");
-        REQUIRE(result == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-    }
-    SECTION("alphabet string") {
-        std::string result = sha256("abc");
-        REQUIRE(result == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-    }
+namespace {
+struct CryptoInitializer {
+  CryptoInitializer() { initCrypto(); }
+} cryptoInitializer;
+} // namespace
+
+TEST_CASE("Argon2id derives deterministic, input-dependent keys", "[crypto]") {
+  const auto salt1 = randomBytes(SALT_SIZE);
+  auto salt2 = salt1;
+  salt2[0] ^= 1U;
+  SecureBuffer key1 = deriveKey("password", salt1, legacyKdfParams());
+  SecureBuffer key2 = deriveKey("password", salt1, legacyKdfParams());
+  SecureBuffer key3 = deriveKey("password", salt2, legacyKdfParams());
+  REQUIRE(key1.size() == KEY_SIZE);
+  REQUIRE(std::memcmp(key1.data(), key2.data(), KEY_SIZE) == 0);
+  REQUIRE(std::memcmp(key1.data(), key3.data(), KEY_SIZE) != 0);
 }
 
-TEST_CASE("XChaCha20-Poly1305 encrypt then decrypt roundtrip", "[crypto]") {
-    std::string key = generateRandomString(KEY_SIZE);
-
-    SECTION("short plaintext") {
-        std::string plaintext = "hello";
-        std::vector<unsigned char> blob = encrypt(plaintext, key);
-        REQUIRE_FALSE(blob.empty());
-        REQUIRE(blob.size() >= plaintext.size() + NONCE_SIZE + MAC_SIZE);
-        std::string decrypted = decrypt(blob, key);
-        REQUIRE(decrypted == plaintext);
-    }
-
-    SECTION("medium plaintext") {
-        std::string plaintext(100, 'A');
-        std::vector<unsigned char> blob = encrypt(plaintext, key);
-        REQUIRE_FALSE(blob.empty());
-        std::string decrypted = decrypt(blob, key);
-        REQUIRE(decrypted == plaintext);
-    }
-
-    SECTION("empty plaintext") {
-        std::string plaintext;
-        std::vector<unsigned char> blob = encrypt(plaintext, key);
-        REQUIRE_FALSE(blob.empty());
-        std::string decrypted = decrypt(blob, key);
-        REQUIRE(decrypted == plaintext);
-    }
+TEST_CASE("Argon2id rejects invalid inputs", "[crypto]") {
+  REQUIRE_THROWS_AS(
+      deriveKey("password", randomBytes(SALT_SIZE - 1), legacyKdfParams()),
+      std::invalid_argument);
+  REQUIRE_THROWS_AS(deriveKey("password", randomBytes(SALT_SIZE), {0, 0}),
+                    std::invalid_argument);
 }
 
-TEST_CASE("XChaCha20-Poly1305 decryption fails with wrong key", "[crypto]") {
-    std::string key = generateRandomString(KEY_SIZE);
-    std::string wrongKey = generateRandomString(KEY_SIZE);
-
-    std::string plaintext = "secret data";
-    std::vector<unsigned char> blob = encrypt(plaintext, key);
-    std::string decrypted = decrypt(blob, wrongKey);
-    REQUIRE(decrypted.empty());
+TEST_CASE("XChaCha20-Poly1305 round trips authenticated plaintext",
+          "[crypto]") {
+  const auto salt = randomBytes(SALT_SIZE);
+  SecureBuffer key = deriveKey("password", salt, legacyKdfParams());
+  const auto nonce = randomBytes(NONCE_SIZE);
+  const std::vector<unsigned char> aad{'h', 'e', 'a', 'd', 'e', 'r'};
+  const std::string plaintext("binary\0secret", 13);
+  const auto ciphertext = encrypt(plaintext, key, nonce, aad);
+  std::string decrypted;
+  REQUIRE(ciphertext.size() == plaintext.size() + MAC_SIZE);
+  REQUIRE(decrypt(ciphertext, key, nonce, aad, decrypted));
+  REQUIRE(decrypted == plaintext);
+  secureWipe(decrypted.data(), decrypted.size());
 }
 
-TEST_CASE("XChaCha20-Poly1305 decryption fails with tampered data", "[crypto]") {
-    std::string key = generateRandomString(KEY_SIZE);
+TEST_CASE("XChaCha20-Poly1305 rejects tampering and wrong inputs", "[crypto]") {
+  const auto salt = randomBytes(SALT_SIZE);
+  SecureBuffer key = deriveKey("password", salt, legacyKdfParams());
+  SecureBuffer wrongKey = deriveKey("wrong", salt, legacyKdfParams());
+  const auto nonce = randomBytes(NONCE_SIZE);
+  const std::vector<unsigned char> aad{'a'};
+  auto ciphertext = encrypt("secret", key, nonce, aad);
+  std::string output;
+  REQUIRE_FALSE(decrypt(ciphertext, wrongKey, nonce, aad, output));
+  ciphertext[0] ^= 1U;
+  REQUIRE_FALSE(decrypt(ciphertext, key, nonce, aad, output));
+  ciphertext[0] ^= 1U;
+  REQUIRE_FALSE(decrypt(ciphertext, key, nonce, {'b'}, output));
 
-    std::string plaintext = "tamper test";
-    std::vector<unsigned char> blob = encrypt(plaintext, key);
-    REQUIRE_FALSE(blob.empty());
-
-    if (blob.size() > static_cast<size_t>(NONCE_SIZE + 1)) {
-        blob[NONCE_SIZE + 5] ^= 0x01;
-    }
-
-    std::string decrypted = decrypt(blob, key);
-    REQUIRE(decrypted.empty());
+  SecureBuffer shortKey(1);
+  REQUIRE_THROWS_AS(encrypt("secret", shortKey, nonce, aad),
+                    std::invalid_argument);
+  REQUIRE_FALSE(decrypt(ciphertext, shortKey, nonce, aad, output));
 }
 
-TEST_CASE("Argon2id produces deterministic output", "[crypto]") {
-    std::string password = "testpassword";
-    std::string salt = "abcdefghijklmnop";
-    size_t keyLen = 32;
-
-    std::string key1 = deriveKey(password, salt, keyLen);
-    std::string key2 = deriveKey(password, salt, keyLen);
-
-    REQUIRE_FALSE(key1.empty());
-    REQUIRE(key1.size() == keyLen);
-    REQUIRE(key1 == key2);
+TEST_CASE("Random helpers return requested sizes and filename-safe characters",
+          "[crypto]") {
+  REQUIRE(randomBytes(16).size() == 16);
+  REQUIRE(randomBytes(0).empty());
+  const std::string value = generateRandomString(1000);
+  REQUIRE(value.size() == 1000);
+  REQUIRE(
+      value.find_first_not_of(
+          "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") ==
+      std::string::npos);
 }
 
-TEST_CASE("Argon2id produces different output with different salts", "[crypto]") {
-    std::string password = "testpassword";
-    std::string salt1 = "abcdefghijklmnop";
-    std::string salt2 = "qrstuvwxyz012345";
-
-    std::string key1 = deriveKey(password, salt1, 32);
-    std::string key2 = deriveKey(password, salt2, 32);
-
-    REQUIRE(key1 != key2);
-}
-
-TEST_CASE("Argon2id produces different output with different passwords", "[crypto]") {
-    std::string salt = "abcdefghijklmnop";
-
-    std::string key1 = deriveKey("password1", salt, 32);
-    std::string key2 = deriveKey("password2", salt, 32);
-
-    REQUIRE(key1 != key2);
-}
-
-TEST_CASE("secureWipe zeroes memory", "[crypto]") {
-    std::vector<unsigned char> data = {0x41, 0x42, 0x43, 0x44, 0x45};
-    secureWipe(data.data(), data.size());
-
-    for (size_t i = 0; i < data.size(); i++) {
-        REQUIRE(data[i] == 0);
-    }
-}
-
-TEST_CASE("deriveSeedFromKey is deterministic", "[crypto]") {
-    std::string key = generateRandomString(KEY_SIZE);
-    std::string salt = generateRandomString(16);
-
-    unsigned seed1 = deriveSeedFromKey(key, salt);
-    unsigned seed2 = deriveSeedFromKey(key, salt);
-
-    REQUIRE(seed1 == seed2);
-}
-
-TEST_CASE("deriveSeedFromKey produces different seeds for different inputs", "[crypto]") {
-    std::string key = generateRandomString(KEY_SIZE);
-    std::string salt1 = generateRandomString(16);
-    std::string salt2 = generateRandomString(16);
-
-    unsigned seed1 = deriveSeedFromKey(key, salt1);
-    unsigned seed2 = deriveSeedFromKey(key, salt2);
-
-    REQUIRE(seed1 != seed2);
-}
-
-TEST_CASE("generateRandomString produces correct length", "[crypto]") {
-    std::string r1 = generateRandomString(16);
-    REQUIRE(r1.size() == 16);
-
-    std::string r2 = generateRandomString(32);
-    REQUIRE(r2.size() == 32);
-
-    std::string r3 = generateRandomString(0);
-    REQUIRE(r3.empty());
+TEST_CASE("secureWipe clears memory", "[crypto]") {
+  std::vector<unsigned char> bytes{1, 2, 3, 4};
+  secureWipe(bytes.data(), bytes.size());
+  REQUIRE(bytes == std::vector<unsigned char>{0, 0, 0, 0});
 }

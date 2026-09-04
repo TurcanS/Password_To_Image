@@ -34,6 +34,7 @@ SOURCES = src/main.cpp \
           src/image_gen.cpp \
           src/stego.cpp \
           src/image_utils.cpp \
+          src/terminal_utils.cpp \
           Include/lodepng.cpp
 
 # Object files
@@ -43,9 +44,13 @@ OBJECTS = $(SOURCES:%.cpp=$(OBJ_DIR)/%.o)
 INCLUDES = -I. -IInclude -Isrc
 
 # Optimization and warning flags
-CXXFLAGS = -std=c++17 -Wall -Wextra -pedantic -D_FORTIFY_SOURCE=2 -fstack-protector-strong
+CXXFLAGS = -std=c++17 -Wall -Wextra -pedantic -fstack-protector-strong -MMD -MP
 OPTFLAGS = -O3 -march=native -mtune=native -flto
 LDFLAGS = -flto
+SODIUM_LIBS := $(shell pkg-config --static --libs libsodium 2>/dev/null)
+ifeq ($(strip $(SODIUM_LIBS)),)
+    SODIUM_LIBS = -lsodium
+endif
 
 # Portable build (overrides native arch for reproducible release binaries)
 ifdef PORTABLE
@@ -55,26 +60,30 @@ endif
 # Platform-specific settings
 ifeq ($(PLATFORM),Windows)
     # Windows/MinGW specific settings
-    LIBS = -lssl -lcrypto -lsodium -lws2_32 -lcrypt32
+    LIBS = $(SODIUM_LIBS) -lws2_32
     # Use static linking on Windows to avoid DLL dependencies
     LDFLAGS += -static
 else
     # Linux specific settings
-    LIBS = -lssl -lcrypto -lsodium -lpthread
+    LIBS = $(SODIUM_LIBS) -lpthread
     LDFLAGS += -Wl,-z,relro -Wl,-z,now
 endif
 
-# Debug build support
-ifdef DEBUG
+# Debug and sanitizer build support
+ifdef SANITIZE
+    CXXFLAGS += -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer
+    OPTFLAGS =
+    LDFLAGS = -fsanitize=address,undefined
+else ifdef DEBUG
     CXXFLAGS += -g -O0 -DDEBUG
     OPTFLAGS =
     LDFLAGS =
 else
-    CXXFLAGS += $(OPTFLAGS) -DNDEBUG
+    CXXFLAGS += $(OPTFLAGS) -DNDEBUG -D_FORTIFY_SOURCE=2
 endif
 
 # Build rules
-.PHONY: all clean rebuild install help
+.PHONY: all clean rebuild install help test smoke-test
 
 all: $(TARGET)
 
@@ -99,6 +108,7 @@ else
 	@$(RMDIR) $(BUILD_DIR) 2>/dev/null || true
 	@$(RM) $(TARGET) 2>/dev/null || true
 endif
+	@$(MAKE) -C test clean
 	@echo "Clean complete"
 
 # Rebuild from scratch
@@ -120,8 +130,10 @@ help:
 	@echo "Usage:"
 	@echo "  make              - Build the project (optimized)"
 	@echo "  make DEBUG=1      - Build with debug symbols"
+	@echo "  make SANITIZE=1   - Build with ASan and UBSan"
 	@echo "  make clean        - Remove build artifacts"
 	@echo "  make rebuild      - Clean and build"
+	@echo "  make test         - Run all tests"
 	@echo "  make install      - Install binary (Linux only)"
 	@echo "  make help         - Show this help message"
 	@echo ""
@@ -132,7 +144,10 @@ help:
 .PHONY: test
 test: $(TARGET)
 	@echo "Running tests..."
-	@$(MAKE) -C test test
+	@$(MAKE) -C test test SANITIZE=$(SANITIZE)
+
+smoke-test: $(TARGET)
+	@./test/smoke_test.sh ./$(TARGET)
 
 # Dependencies
 -include $(OBJECTS:.o=.d)
